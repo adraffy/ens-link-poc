@@ -1,5 +1,5 @@
 import {Foundry} from '@adraffy/blocksmith';
-import {EthProver, EVMRequest, EVMProgram} from '@unruggable/evmgateway';
+import {EthProver, EVMRequest, ABI_CODER} from '@unruggable/evmgateway';
 import {ethers} from 'ethers';
 
 const foundry = await Foundry.launch();
@@ -18,8 +18,9 @@ function dnsEncode(name) {
 // ************************************************************
 
 // raffy.eth -> raffy namespace
+// no link required: default link is owned namespace
 const ns_raffy = await createNamespace();
-await foundry.confirm(linker.setOwnedNamespace(dnsEncode('raffy.eth'), ns_raffy));
+await foundry.confirm(linker.setNamespace(foundry.wallets.admin, ethers.namehash('raffy.eth'), ns_raffy));
 
 await foundry.confirm(linker.setRecord(
 	ns_raffy, 
@@ -61,7 +62,7 @@ await foundry.confirm(nft.mint(ethers.id('raffy')));
 // chonk.eth -> nft -> token
 await foundry.confirm(linker.createLink(dnsEncode('chonk.eth'), nft));
 const ns_chonk = await createNamespace();
-await foundry.confirm(linker.setTokenNamespace(nft, ethers.id('raffy'), ns_chonk));
+await foundry.confirm(linker.setNamespace(nft, ethers.id('raffy'), ns_chonk));
 
 await foundry.confirm(linker.setRecord(
 	ns_chonk, 
@@ -118,7 +119,7 @@ async function resolve(name, recordType, recordKey) {
 
 	//console.log({basename, controller, drop});
 
-	let fragment_owned = parts.slice(0, -drop).join('.');
+	let owned_fragment = parts.slice(0, -drop).join('.');
 
 	let token;
 	let token_label;
@@ -136,61 +137,74 @@ async function resolve(name, recordType, recordKey) {
 	// uint256 _nsCount;
 	// mapping (uint256 ns => address owner) _nsOwners;
 	// mapping (address controller => mapping(bytes basename => uint256)) _links;
-	// mapping (address mediator => mapping(uint256 token => uint256 ns)) _nsLinks;
+	// mapping (address mediator => mapping(uint256 token => uint256 ns)) _tokenLinks;
 	// mapping (uint256 ns => mapping(bytes fragment => mapping(bytes32 key => bytes value))) _records;
+	let iController = req.addInput(controller);
+	let iKeyHash = req.addInput(key_hash);
 
 	// read link type
-	req.setSlot(2).push(controller).follow().pushBytes(dnsEncode(basename)).follow().read().setOutput(0);
+	req.setSlot(2)
+		.pushInput(iController).follow()
+		.pushBytes(dnsEncode(basename)).follow()
+		.read().setOutput(0);
 
-	// assume link is owner, read owned ns
-	req.setSlot(3).push(controller).follow().push(0).follow().read().setOutput(1);
+	// assume link is owned, read ns
+	req.setSlot(3)
+		.pushInput(iController).follow()
+		.pushBytes(ethers.namehash(basename)).follow()
+		.read().setOutput(1)
 
 	// read owned record
 	req.setSlot(4)
 		.pushOutput(1).follow()
-		.pushBytes(dnsEncode(fragment_owned)).follow()
-		.push(key_hash).follow()
-		.readBytes().setOutput(2);
+		.pushBytes(dnsEncode(owned_fragment)).follow()
+		.pushInput(iKeyHash).follow()
+		.readBytes().setOutput(2)
 	
 	if (token) {
 
-		// assume link is tokenized, read token ns
+		// assume link is tokenized, read ns
 		req.setSlot(3)
-			.pushBytes(new Uint8Array(12)).pushOutput(0).slice(12, 20).concat().follow()
-			.push(token).follow().read().setOutput(3);
+			.pushOutput(0).follow()
+			.push(token).follow()
+			.read().setOutput(3);
 	
 		// read record
-		req.pushProgram(new EVMProgram()
-			.pushOutput(3)
-			.requireNonzero()
-			.setSlot(4).follow()
+		req.setSlot(4)
+			.pushOutput(3).follow()
 			.pushBytes(dnsEncode(token_fragment)).follow()
-			.push(key_hash).follow()
-			.readBytes().setOutput(4)).eval();
+			.pushInput(iKeyHash).follow()
+			.readBytes().setOutput(4);
 	}
 	
 	
 	let state = await prover.evalRequest(req);
 	let outputs = await state.resolveOutputs();
+	
+	// let proofSeq = await prover.prove(state.needs);
+	// let proofSize = ethers.dataLength(ABI_CODER.encode(['bytes[]', 'bytes'], [proofSeq.proofs, proofSeq.order]));
+
 	let link = outputs[0];
-	let linkType = BigInt(link) >> 160n;
+	let tokenized = BigInt(link) != 0;
 
 	let out = {
 		name,
 		recordType,
 		recordKey,
-		basename, 
+		basename,
 		controller,
-		linkType
+		tokenized,
 	};
 	let value;
-	if (linkType) {
+	if (tokenized) {
 		out.label = token_label;
 		out.token = token;
 		out.ns = BigInt(outputs[3]);
+		out.fragment = token_fragment;
 		value = outputs[4];
 	} else {
 		out.ns = BigInt(outputs[1]);
+		out.fragment = owned_fragment;
 		value = outputs[2];
 	}
 	if (out.ns) {

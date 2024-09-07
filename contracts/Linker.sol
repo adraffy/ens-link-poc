@@ -11,11 +11,11 @@ contract Linker {
 	event NamespaceCreated(address indexed owner, uint256 ns);
 	event LinkChanged(address indexed controller, bytes32 indexed basenameNode, bytes basename, uint256 link);
 	event RecordChanged(uint256 indexed ns, bytes32 indexed fragmentNode, bytes32 indexed key);
-
+	
 	uint256 _nsCount;
 	mapping (uint256 ns => address owner) _nsOwners;
 	mapping (address controller => mapping(bytes basename => uint256)) _links;
-	mapping (address mediator => mapping(uint256 token => uint256 ns)) _nsLinks;
+	mapping (address mediator => mapping(uint256 token => uint256 ns)) _tokenLinks;
 	mapping (uint256 ns => mapping(bytes fragment => mapping(bytes32 key => bytes value))) _records;
 
 	function namespaceCount() external view returns (uint256) {
@@ -36,20 +36,23 @@ contract Linker {
 		_setLink(msg.sender, basename, 0);
 	}
 	function createLink(bytes memory basename, address mediator) external {
-		_setLink(msg.sender, basename, uint256(uint160(mediator)) | (1 << 255));
+		_setLink(msg.sender, basename, uint160(mediator));
 	}
-	function setOwnedNamespace(bytes memory basename, uint256 ns) external {
-		_setLink(msg.sender, basename, ns);
-	}
-	function setTokenNamespace(address mediator, uint256 token, uint256 ns) external {
-		if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC721).interfaceId)) {
-			require(msg.sender == IERC721(mediator).ownerOf(token), "owner");
-		} else if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC1155).interfaceId)) {
-			require(IERC721(mediator).balanceOf(msg.sender) != 0, "owner");
-		} else {
-			revert("unknown mediator");
+
+	function setNamespace(address mediator, uint256 token, uint256 ns) external {
+		uint256 size;
+		assembly { size := extcodesize(mediator) }
+		if (size > 0) {
+			if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC721).interfaceId)) {
+				require(msg.sender == IERC721(mediator).ownerOf(token), "owner");
+			} else if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC1155).interfaceId)) {
+				require(IERC1155(mediator).balanceOf(msg.sender, token) != 0, "owner");
+			} else {
+				// TODO add interface for contract-controlled stuff
+				revert("unknown mediator");
+			}
 		}
-		_nsLinks[mediator][token] = ns;
+		_tokenLinks[mediator][token] = ns;
 	}
 
 	function setRecord(uint256 ns, bytes memory fragment, bytes32 key, bytes memory value) external {
@@ -57,6 +60,5 @@ contract Linker {
 		_records[ns][fragment][key] = value;
 		emit RecordChanged(ns, BytesUtils.namehash(fragment, 0), key);
 	}
-
 
 }
