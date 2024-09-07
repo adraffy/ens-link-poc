@@ -15,9 +15,34 @@ function dnsEncode(name) {
 	return name ? ethers.dnsEncode(name) : `0x00`;
 }
 
-const ns_raffy = await createNamespace();
-const ns_chonk = await createNamespace();
+// ************************************************************
 
+// raffy.eth -> raffy namespace
+const ns_raffy = await createNamespace();
+await foundry.confirm(linker.setOwnedNamespace(dnsEncode('raffy.eth'), ns_raffy));
+
+await foundry.confirm(linker.setRecord(
+	ns_raffy, 
+	dnsEncode(''), 
+	ethers.id('avatar'), 
+	ethers.toUtf8Bytes('https://raffy.antistupid.com/ens.jpg')
+));
+await foundry.confirm(linker.setRecord(
+	ns_raffy, 
+	dnsEncode(''), 
+	ethers.toBeHex(60, 32), 
+	'0x51050ec063d393217B436747617aD1C2285Aeeee'
+));
+await foundry.confirm(linker.setRecord(
+	ns_raffy, 
+	dnsEncode('sub'), 
+	ethers.id('description'), 
+	ethers.toUtf8Bytes('I am subdomain')
+));
+
+// ************************************************************
+
+// create nft
 const nft = await foundry.deploy({
 	sol: `
 		import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -30,20 +55,28 @@ const nft = await foundry.deploy({
 	`,
 });
 
-await foundry.confirm(linker.createLink(dnsEncode('chonk.eth'), 1, nft));
+// mint subdomain
+await foundry.confirm(nft.mint(ethers.id('raffy')));
 
+// chonk.eth -> nft -> token
+await foundry.confirm(linker.createLink(dnsEncode('chonk.eth'), nft));
+const ns_chonk = await createNamespace();
+await foundry.confirm(linker.setTokenNamespace(nft, ethers.id('raffy'), ns_chonk));
 
-const labelhash_raffy = ethers.id('raffy');
-await foundry.confirm(nft.mint(labelhash_raffy));
+await foundry.confirm(linker.setRecord(
+	ns_chonk, 
+	dnsEncode(''), 
+	ethers.id('description'), 
+	ethers.toUtf8Bytes('I am Chonk #1')
+));
+await foundry.confirm(linker.setRecord(
+	ns_chonk, 
+	dnsEncode('a.b.c'), 
+	ethers.id('description'), 
+	ethers.toUtf8Bytes('chonk!!!')
+));
 
-await foundry.confirm(linker.setNamespace(foundry.wallets.admin, 0, ns_raffy));
-await foundry.confirm(linker.setNamespace(nft, labelhash_raffy, ns_chonk));
-
-
-await foundry.confirm(linker.setRecord(ns_raffy, dnsEncode(''), ethers.id('avatar'), ethers.toUtf8Bytes('https://raffy.antistupid.com/ens.jpg')));
-await foundry.confirm(linker.setRecord(ns_raffy, dnsEncode(''), ethers.toBeHex(60, 32), '0x51050ec063d393217B436747617aD1C2285Aeeee'));
-await foundry.confirm(linker.setRecord(ns_raffy, dnsEncode('sub'), ethers.id('description'), ethers.toUtf8Bytes('I am subdomain')));
-await foundry.confirm(linker.setRecord(ns_chonk, dnsEncode(''), ethers.id('description'), ethers.toUtf8Bytes('I am Chonk #1')));
+// ************************************************************
 
 const prover = await EthProver.latest(foundry.provider);
 
@@ -171,6 +204,7 @@ await resolve('raffy.eth', 'text', 'avatar');
 await resolve('raffy.eth', 'addr', 60);
 await resolve('sub.raffy.eth', 'text', 'description');
 await resolve('raffy.chonk.eth', 'text', 'description');
+await resolve('a.b.c.raffy.chonk.eth', 'text', 'description');
 await resolve('alice.chonk.eth', 'text', 'description');
 
 
