@@ -11,8 +11,22 @@ async function createNamespace(owner = foundry.wallets.admin) {
 	return receipt.logs[0].args[1];
 }
 
-function dnsEncode(name) {
-	return name ? ethers.dnsEncode(name) : `0x00`;
+function namehash(name) {
+	return name ? ethers.namehash(name) : ethers.ZeroHash;
+}
+
+function rareKey(key) {
+	return ethers.toBeHex(BigInt(ethers.id(key)) - 1n, 32);
+}
+
+const CONTENTHASH_KEY = rareKey('contenthash');
+const PUBKEY_KEY = rareKey('pubkey');
+
+function textEntry(key, value) {
+	return [ethers.id(key), ethers.toUtf8Bytes(value)];
+}
+function addrEntry(coinType, value) {
+	return [ethers.toBeHex(coinType, 32), value];
 }
 
 // ************************************************************
@@ -20,25 +34,19 @@ function dnsEncode(name) {
 // raffy.eth -> raffy namespace
 // no link required: default link is owned namespace
 const ns_raffy = await createNamespace();
-await foundry.confirm(linker.setNamespace(foundry.wallets.admin, ethers.namehash('raffy.eth'), ns_raffy));
+await foundry.confirm(linker.setNamespace(foundry.wallets.admin, namehash('raffy.eth'), ns_raffy));
 
-await foundry.confirm(linker.setRecord(
+await foundry.confirm(linker.setRecords(
 	ns_raffy, 
-	dnsEncode(''), 
-	ethers.id('avatar'), 
-	ethers.toUtf8Bytes('https://raffy.antistupid.com/ens.jpg')
-));
-await foundry.confirm(linker.setRecord(
-	ns_raffy, 
-	dnsEncode(''), 
-	ethers.toBeHex(60, 32), 
-	'0x51050ec063d393217B436747617aD1C2285Aeeee'
-));
-await foundry.confirm(linker.setRecord(
-	ns_raffy, 
-	dnsEncode('sub'), 
-	ethers.id('description'), 
-	ethers.toUtf8Bytes('I am subdomain')
+	[
+		[namehash(''), [
+			textEntry('avatar', 'https://raffy.antistupid.com/ens.jpg'),
+			addrEntry(60, '0x51050ec063d393217B436747617aD1C2285Aeeee'),
+		]],
+		[namehash('sub'), [
+			textEntry('description', 'I am subdomain')
+		]]
+	]
 ));
 
 // ************************************************************
@@ -60,21 +68,20 @@ const nft = await foundry.deploy({
 await foundry.confirm(nft.mint(ethers.id('raffy')));
 
 // chonk.eth -> nft -> token
-await foundry.confirm(linker.createLink(dnsEncode('chonk.eth'), nft));
+await foundry.confirm(linker.createLink(namehash('chonk.eth'), nft));
 const ns_chonk = await createNamespace();
 await foundry.confirm(linker.setNamespace(nft, ethers.id('raffy'), ns_chonk));
 
-await foundry.confirm(linker.setRecord(
-	ns_chonk, 
-	dnsEncode(''), 
-	ethers.id('description'), 
-	ethers.toUtf8Bytes('I am Chonk #1')
-));
-await foundry.confirm(linker.setRecord(
-	ns_chonk, 
-	dnsEncode('a.b.c'), 
-	ethers.id('description'), 
-	ethers.toUtf8Bytes('chonk!!!')
+await foundry.confirm(linker.setRecords(
+	ns_chonk,
+	[
+		[namehash(''), [
+			textEntry('description', 'I am Chonk #1')
+		]],
+		[namehash('a.b.c'), [
+			textEntry('description', 'Chonk ABC!')
+		]]
+	],	
 ));
 
 // ************************************************************
@@ -96,13 +103,15 @@ async function resolve(name, recordType, recordKey) {
 			key_hash = ethers.id(recordKey);
 			break;
 		case 'pubkey':
+			key_hash = PUBKEY_KEY;
+			break;
 		case 'contenthash': 
-			key_hash = BigInt(ethers.id(recordType)) - 1n;
+			key_hash = CONTENTHASH_KEY;
 			break;
 		default:
 			key_hash = recordKey;
 	}
-	key_hash = ethers.toBeHex(key_hash);
+	key_hash = ethers.toBeHex(key_hash, 32);
 
 	//console.log({name, type, key, key_hash, utf8});
 
@@ -135,29 +144,30 @@ async function resolve(name, recordType, recordKey) {
 	let req = new EVMRequest(5);
 	req.setTarget(linker.target);
 	// uint256 _nsCount;
-	// mapping (uint256 ns => address owner) _nsOwners;
-	// mapping (address controller => mapping(bytes basename => uint256)) _links;
-	// mapping (address mediator => mapping(uint256 token => uint256 ns)) _tokenLinks;
-	// mapping (uint256 ns => mapping(bytes fragment => mapping(bytes32 key => bytes value))) _records;
+	// mapping (uint256 ns => address) _ns;
+	// mapping (address controller => mapping(bytes32 baseNode => address)) _mediators;
+	// mapping (address mediator => mapping(uint256 id => uint256 ns)) _links;
+	// mapping (uint256 ns => mapping(bytes32 fragNode => mapping(bytes32 key => Record))) _records;
 	let iController = req.addInput(controller);
 	let iKeyHash = req.addInput(key_hash);
+	let iBaseNode = req.addInput(namehash(basename));
 
 	// read link type
 	req.setSlot(2)
 		.pushInput(iController).follow()
-		.pushBytes(dnsEncode(basename)).follow()
+		.pushInput(iBaseNode).follow()
 		.read().setOutput(0);
 
 	// assume link is owned, read ns
 	req.setSlot(3)
 		.pushInput(iController).follow()
-		.pushBytes(ethers.namehash(basename)).follow()
+		.pushInput(iBaseNode).follow()
 		.read().setOutput(1)
 
 	// read owned record
 	req.setSlot(4)
 		.pushOutput(1).follow()
-		.pushBytes(dnsEncode(owned_fragment)).follow()
+		.pushBytes(namehash(owned_fragment)).follow()
 		.pushInput(iKeyHash).follow()
 		.readBytes().setOutput(2)
 	
@@ -172,7 +182,7 @@ async function resolve(name, recordType, recordKey) {
 		// read record
 		req.setSlot(4)
 			.pushOutput(3).follow()
-			.pushBytes(dnsEncode(token_fragment)).follow()
+			.pushBytes(namehash(token_fragment)).follow()
 			.pushInput(iKeyHash).follow()
 			.readBytes().setOutput(4);
 	}
