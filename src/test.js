@@ -6,7 +6,7 @@ const foundry = await Foundry.launch();
 
 const linker = await foundry.deploy({file: 'Linker'});
 
-async function createNamespace(owner = foundry.wallets.admin) {
+async function createNamespace(owner) {
 	const receipt = await foundry.confirm(linker.createNamespace(owner));
 	return receipt.logs[0].args[1];
 }
@@ -33,8 +33,9 @@ function addrEntry(coinType, value) {
 
 // raffy.eth -> raffy namespace
 // no link required: default link is owned namespace
-const ns_raffy = await createNamespace();
-await foundry.confirm(linker.setNamespace(foundry.wallets.admin, namehash('raffy.eth'), ns_raffy));
+let controller = foundry.wallets.admin;
+const ns_raffy = await createNamespace(controller);
+await foundry.confirm(linker.setNamespace(controller, namehash('raffy.eth'), ns_raffy));
 
 await foundry.confirm(linker.setRecords(
 	ns_raffy, 
@@ -69,7 +70,7 @@ await foundry.confirm(nft.mint(ethers.id('raffy')));
 
 // chonk.eth -> nft -> token
 await foundry.confirm(linker.createLink(namehash('chonk.eth'), nft));
-const ns_chonk = await createNamespace();
+const ns_chonk = await createNamespace(foundry.wallets.admin);
 await foundry.confirm(linker.setNamespace(nft, ethers.id('raffy'), ns_chonk));
 
 await foundry.confirm(linker.setRecords(

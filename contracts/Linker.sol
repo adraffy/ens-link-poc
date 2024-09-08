@@ -8,6 +8,8 @@ import {BytesUtils} from "@ensdomains/ens-contracts/contracts/utils/BytesUtils.s
 
 contract Linker {
 
+	error NotAuthorized();
+
 	struct Record { bytes value; uint96 blockNumber; }
 
 	event NamespaceCreated(address indexed owner, uint256 indexed ns);
@@ -44,15 +46,15 @@ contract Linker {
 	function setNamespace(address mediator, uint256 id, uint256 ns) external {
 		uint256 size;
 		assembly { size := extcodesize(mediator) }
-		if (size > 0) {
-			if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC721).interfaceId)) {
-				require(msg.sender == IERC721(mediator).ownerOf(id), "owner");
-			} else if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC1155).interfaceId)) {
-				require(IERC1155(mediator).balanceOf(msg.sender, id) != 0, "owner");
-			} else {
-				// TODO add interface for contract-controlled stuff
-				revert("unknown mediator");
-			}
+		if (size == 0) {
+			if (mediator != msg.sender) revert NotAuthorized();
+		} else if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC721).interfaceId)) {
+			if (msg.sender != IERC721(mediator).ownerOf(id)) revert NotAuthorized();
+		} else if (IERC165(mediator).supportsInterface{gas: 30000}(type(IERC1155).interfaceId)) {
+			if (IERC1155(mediator).balanceOf(msg.sender, id) != 0) revert NotAuthorized();
+		} else {
+			// TODO add interface for contract-controlled stuff
+			revert NotAuthorized();
 		}
 		_links[mediator][id] = ns;
 		emit NamespaceLinked(ns, mediator, id);

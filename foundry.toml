@@ -2,11 +2,14 @@
 
 src = "contracts"
 
+lib = ["lib", "node_modules"]
+
 remappings = [
 	'lib/ens-contracts:@openzeppelin/contracts=lib/openzeppelin-contracts-v4.9/contracts/',
 	'@ensdomains/ens-contracts=lib/ens-contracts/',
 	'@ensdomains/buffer=lib/buffer',
 
 	'@openzeppelin/contracts=lib/openzeppelin-contracts/contracts/',
-]
 
+	'@unruggable/evmgateway=node_modules/@unruggable/evmgateway/'
+]
