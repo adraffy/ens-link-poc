@@ -1,19 +1,12 @@
 import {Foundry} from '@adraffy/blocksmith';
 import {EthProver, EVMRequest, ABI_CODER} from '@unruggable/evmgateway';
 import {ethers} from 'ethers';
+import {namehash, deploy_erc_721, parse_ns} from './utils.js';
 
 const foundry = await Foundry.launch();
+const {admin} = foundry.wallets;
 
 const linker = await foundry.deploy({file: 'Linker'});
-
-async function createNamespace(owner) {
-	const receipt = await foundry.confirm(linker.createNamespace(owner));
-	return receipt.logs[0].args[1];
-}
-
-function namehash(name) {
-	return name ? ethers.namehash(name) : ethers.ZeroHash;
-}
 
 function rareKey(key) {
 	return ethers.toBeHex(BigInt(ethers.id(key)) - 1n, 32);
@@ -33,9 +26,8 @@ function addrEntry(coinType, value) {
 
 // raffy.eth -> raffy namespace
 // no link required: default link is owned namespace
-let controller = foundry.wallets.admin;
-const ns_raffy = await createNamespace(controller);
-await foundry.confirm(linker.setNamespace(controller, namehash('raffy.eth'), ns_raffy));
+const ns_raffy = parse_ns(await foundry.confirm(linker.createNamespace(admin)));
+await foundry.confirm(linker.setNamespace(admin, namehash('raffy.eth'), ns_raffy));
 
 await foundry.confirm(linker.setRecords(
 	ns_raffy, 
@@ -53,24 +45,15 @@ await foundry.confirm(linker.setRecords(
 // ************************************************************
 
 // create nft
-const nft = await foundry.deploy({
-	sol: `
-		import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-		contract ChonkNFT is ERC721 {
-			constructor() ERC721("Chonk", "CHONK") {}
-			function mint(uint256 token) external {
-				_safeMint(msg.sender, token);
-			}
-		}
-	`,
-});
+const nft = await deploy_erc_721(foundry);
 
 // mint subdomain
-await foundry.confirm(nft.mint(ethers.id('raffy')));
+await foundry.confirm(nft.mint('raffy'));
 
 // chonk.eth -> nft -> token
 await foundry.confirm(linker.createLink(namehash('chonk.eth'), nft));
-const ns_chonk = await createNamespace(foundry.wallets.admin);
+const ns_chonk = parse_ns(await foundry.confirm(linker.createNamespace(admin)));
+
 await foundry.confirm(linker.setNamespace(nft, ethers.id('raffy'), ns_chonk));
 
 await foundry.confirm(linker.setRecords(
@@ -90,8 +73,8 @@ await foundry.confirm(linker.setRecords(
 const prover = await EthProver.latest(foundry.provider);
 
 const basenames = new Map([
-	['raffy.eth', foundry.wallets.admin.address],
-	['chonk.eth', foundry.wallets.admin.address]
+	['raffy.eth', admin.address],
+	['chonk.eth', admin.address]
 ]);
 
 async function resolve(name, recordType, recordKey) {

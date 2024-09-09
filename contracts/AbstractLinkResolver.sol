@@ -55,7 +55,19 @@ abstract contract AbstractLinkResolver is EVMFetchTarget, IExtendedResolver {
 		}
 	}
 
-	function _takeFragment(bytes memory dnsname, uint256 offset) internal pure returns (bytes memory fragment) {
+	function _findSelf(bytes memory dnsname) internal view returns (bytes32 node, uint256 offset) {
+		unchecked {
+			while (true) {
+				node = dnsname.namehash(offset);
+				if (_ens.resolver(node) == address(this)) break;
+				uint256 size = uint8(dnsname[offset]);
+				if (size == 0) revert Unreachable(dnsname);
+				offset += 1 + size;
+			}
+		}
+	}
+
+	function _take(bytes memory dnsname, uint256 offset) internal pure returns (bytes memory fragment) {
 		fragment = dnsname.substring(0, offset + 1);
 		fragment[offset] = bytes1(0);
 		// uint256 save;
@@ -70,14 +82,13 @@ abstract contract AbstractLinkResolver is EVMFetchTarget, IExtendedResolver {
 		// }
 	}
 
-	function _findSelf(bytes memory dnsname) internal view returns (bytes32 node, uint256 offset) {
+	function _most(bytes memory dnsname, uint256 end) internal pure returns (uint256 offset) {
 		unchecked {
 			while (true) {
-				node = dnsname.namehash(offset);
-				if (_ens.resolver(node) == address(this)) break;
-				uint256 size = uint256(uint8(dnsname[offset]));
-				if (size == 0) revert Unreachable(dnsname);
-				offset += 1 + size;
+				uint8 size = uint8(dnsname[offset]);
+				uint256 next = offset + 1 + size;
+				if (next == end) break;
+				offset = next;
 			}
 		}
 	}
