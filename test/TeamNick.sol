@@ -6,8 +6,6 @@ import { LinkedNFT } from "../contracts/LinkedNFT.sol";
 import { INamespace } from "../contracts/INamespace.sol";
 import { StorageKey } from "../contracts/StorageKey.sol";
 
-import "forge-std/console2.sol";
-
 contract TeamNick is ERC721, LinkedNFT {
 	event NamespaceChanged(uint256 indexed token, uint256 indexed ns);
 

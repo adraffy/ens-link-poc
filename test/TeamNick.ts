@@ -12,6 +12,7 @@ const foundry = await Foundry.launch({
 const ABI = new Interface([
   `function resolve(bytes, bytes) view returns (bytes)`,
   `function addr(bytes32, uint256) view returns (bytes)`,
+  `function text(bytes32, string) view returns (string)`,
   `function lastModified(bytes) view returns (uint256)`,
 ]);
 
@@ -20,7 +21,7 @@ const NFTDeployer = await foundry.ensureWallet("NFTDeployer");
 
 const ENS = await deployENS(foundry);
 const Namespace = await foundry.deploy({ file: "Namespace" });
-const { ccip, SelfVerifier } = await deploySelfVerifier(foundry);
+const { gateway, ccip, SelfVerifier } = await deploySelfVerifier(foundry);
 const LinkedNFTResolver = await foundry.deploy({
   file: "LinkedNFTResolver",
   args: [ENS, SelfVerifier, Namespace],
@@ -84,6 +85,16 @@ await foundry.confirm(
 console.log(await resolve("teamnick.eth"));
 console.log(await resolve("raffy.teamnick.eth"));
 console.log(await resolve("a.b.c.raffy.teamnick.eth"));
+//await new Promise(ful => setTimeout(ful, 5000));
+await foundry.confirm(
+  Namespace.connect(NFTOwner).setRecord(
+    nsRaffy,
+    namehash(""),
+    ...StorageKey.textValue("description", "RAFFY!")
+  )
+);
+await foundry.nextBlock();
+console.log(await resolve("raffy.teamnick.eth"));
 
 await ccip.shutdown();
 await foundry.shutdown();
@@ -96,7 +107,10 @@ async function resolve(name: string) {
     ABI.encodeFunctionData("addr", [ZeroHash, 60])
   );
   const description = await resolver.getText("description");
-  return { name, address, address_t, description };
+  const description_t = await lastModified(
+    ABI.encodeFunctionData("text", [ZeroHash, "description"])
+  );
+  return { name, address, address_t, description, description_t };
 
   async function lastModified(calldata: string) {
     const res = ABI.decodeFunctionResult(
@@ -107,6 +121,6 @@ async function resolve(name: string) {
         { enableCcipRead: true }
       )
     );
-	return new Date(Number(res[0] * 1000n));
+    return res[0] ? new Date(Number(res[0] * 1000n)) : null;
   }
 }

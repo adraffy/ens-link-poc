@@ -8,6 +8,7 @@ function getArtifactPath(name: string) {
 
 export async function deploySelfVerifier(foundry: Foundry) {
   const gateway = new Gateway(new EthSelfRollup(foundry.provider));
+  gateway.latestCache.cacheMs = 0;
   gateway.rollup.latestBlockTag = "latest";
   const ccip = await serve(gateway, {
     protocol: "raw",
