@@ -1,20 +1,23 @@
+# https://book.getfoundry.sh/reference/config/overview
+
+
 [profile.default]
-
 src = "contracts"
-
 lib = ["lib", "node_modules"]
-
 optimizer = true
 optimizer-runs = 200
-
 via-ir = true
-
 remappings = [
 	'lib/ens-contracts:@openzeppelin/contracts=lib/openzeppelin-contracts-v4.9/contracts/',
 	'@ensdomains/ens-contracts=lib/ens-contracts/',
 	'@ensdomains/buffer=lib/buffer',
-
 	'@openzeppelin/contracts=lib/openzeppelin-contracts/contracts/',
-
-	'@unruggable/evmgateway=node_modules/@unruggable/evmgateway/'
+	'@unruggable=node_modules/@unruggable/'
 ]
+
+# forge install foundry-rs/forge-std
+# forge install ensdomains/ens-contracts
+# required for ens-contracts
+# forge install openzeppelin-contracts-v4.9=OpenZeppelin/openzeppelin-contracts@release-v4.9 
+# https://github.com/OpenZeppelin/openzeppelin-contracts/pull/4845
+# forge install OpenZeppelin/openzeppelin-contracts@master 
