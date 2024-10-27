@@ -1,13 +1,11 @@
 import { Foundry } from "@adraffy/blocksmith";
 import * as StorageKey from "./storage-key.js";
-import { namehash, extractEvent } from "./utils.js";
+import { namehash } from "./utils.js";
 import { deploySelfVerifier } from "./deploy-self.js";
 import { deployENS } from "./deploy-ens.js";
 import { dnsEncode, Interface, ZeroHash } from "ethers";
 
-const foundry = await Foundry.launch({
-  infoLog: false,
-});
+const foundry = await Foundry.launch({ infoLog: false });
 
 const ABI = new Interface([
   `function resolve(bytes, bytes) view returns (bytes)`,
@@ -21,9 +19,9 @@ const NFTDeployer = await foundry.ensureWallet("NFTDeployer");
 
 const ENS = await deployENS(foundry);
 const Namespace = await foundry.deploy({ file: "Namespace" });
-const { gateway, ccip, SelfVerifier } = await deploySelfVerifier(foundry);
-const LinkedNFTResolver = await foundry.deploy({
-  file: "LinkedNFTResolver",
+const { ccip, SelfVerifier } = await deploySelfVerifier(foundry);
+const LinkedResolver = await foundry.deploy({
+  file: "LinkedResolver",
   args: [ENS, SelfVerifier, Namespace],
 });
 
@@ -33,11 +31,10 @@ const TeamNick = await foundry.deploy({
   args: [Namespace],
   abis: [Namespace],
 });
-const nsBasename = BigInt(TeamNick.__receipt.logs[0].topics[1]);
-// const { ns: nsBasename } = extractEvent(
-//   TeamNick.__receipt,
-//   "NamespaceTransfer"
-// );
+const [{ ns: nsBasename }] = foundry.getEventResults(
+  TeamNick,
+  "NamespaceTransfer"
+);
 await foundry.confirm(
   Namespace.connect(NFTDeployer).setRecords(nsBasename, [
     [
@@ -50,7 +47,7 @@ await foundry.confirm(
   ])
 );
 
-const { ns: nsRaffy } = extractEvent(
+const [{ ns: nsRaffy }] = foundry.getEventResults(
   await foundry.confirm(TeamNick.connect(NFTOwner).mint("raffy")),
   "NamespaceTransfer"
 );
@@ -74,9 +71,9 @@ await foundry.confirm(
 );
 
 // create link
-await ENS.$set("teamnick.eth", NFTDeployer, LinkedNFTResolver);
+await ENS.$set("teamnick.eth", NFTDeployer, LinkedResolver);
 await foundry.confirm(
-  LinkedNFTResolver.connect(NFTDeployer).setLink(
+  LinkedResolver.connect(NFTDeployer).setLink(
     namehash("teamnick.eth"),
     TeamNick
   )
@@ -115,7 +112,7 @@ async function resolve(name: string) {
   async function lastModified(calldata: string) {
     const res = ABI.decodeFunctionResult(
       "lastModified",
-      await LinkedNFTResolver.resolve(
+      await LinkedResolver.resolve(
         dnsEncode(name, 255),
         ABI.encodeFunctionData("lastModified", [calldata]),
         { enableCcipRead: true }

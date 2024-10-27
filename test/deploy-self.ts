@@ -6,14 +6,11 @@ function getArtifactPath(name: string) {
   return `node_modules/@unruggable/gateways/artifacts/${name}.sol/${name}.json`;
 }
 
-export async function deploySelfVerifier(foundry: Foundry) {
+export async function deploySelfVerifier(foundry: Foundry, log = false) {
   const gateway = new Gateway(new EthSelfRollup(foundry.provider));
   gateway.latestCache.cacheMs = 0;
   gateway.rollup.latestBlockTag = "latest";
-  const ccip = await serve(gateway, {
-    protocol: "raw",
-    log: false,
-  });
+  const ccip = await serve(gateway, { protocol: "raw", log });
   const GatewayVM = await foundry.deploy({
     file: getArtifactPath("GatewayVM"),
   });

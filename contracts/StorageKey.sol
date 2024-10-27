@@ -21,6 +21,7 @@ library StorageKey {
 
 	// https://adraffy.github.io/keccak.js/test/demo.html#algo=keccak-256&s=0xbc1c58d10000000000000000000000000000000000000000000000000000000000000002&escape=1&encoding=hex
 	bytes32 constant CHASH = 0xa2555defb234ce18f77f94de1e86e488f6b01044d1b93e78bf81bc760f30e0c1;
+
 	// https://adraffy.github.io/keccak.js/test/demo.html#algo=keccak-256&s=0xc86902330000000000000000000000000000000000000000000000000000000000000002&escape=1&encoding=hex
 	bytes32 constant PUBKEY = 0x09fb8735909dd331237a6beb0776b7175d5f1aba498474ba1681f771a8dfde34;
 

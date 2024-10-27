@@ -25,6 +25,12 @@ struct RecordEntry {
 	bytes value;
 }
 
+library NamespaceLayout {
+	uint256 constant SLOT_COUNT = 0;
+	uint256 constant SLOT_OWNERS = 1;
+	uint256 constant SLOT_RECORDS = 2;
+}
+
 interface INamespace {
 	function create(address owner) external returns (uint256 ns);
 	function transfer(uint256 ns, address owner) external;

@@ -1,11 +1,10 @@
 import { Foundry } from "@adraffy/blocksmith";
-import { ethers } from "ethers";
 import * as StorageKey from "./storage-key.js";
-import { namehash, extractEvent } from "./utils.js";
+import { namehash } from "./utils.js";
 import { deploySelfVerifier } from "./deploy-self.js";
 import { deployENS } from "./deploy-ens.js";
 
-const foundry = await Foundry.launch();
+const foundry = await Foundry.launch({ infoLog: false });
 
 const NFTOwner = await foundry.ensureWallet("NFTOwner");
 const NFTDeployer = await foundry.ensureWallet("NFTDeployer");
@@ -13,12 +12,12 @@ const NFTDeployer = await foundry.ensureWallet("NFTDeployer");
 const ENS = await deployENS(foundry);
 const Namespace = await foundry.deploy({ file: "Namespace" });
 const { ccip, SelfVerifier } = await deploySelfVerifier(foundry);
-const LinkedNFTResolver = await foundry.deploy({
-  file: "LinkedNFTResolver",
+const LinkedResolver = await foundry.deploy({
+  file: "LinkedResolver",
   args: [ENS, SelfVerifier, Namespace],
 });
 
-const { ns: nsRaffy } = extractEvent(
+const [{ ns: nsRaffy }] = foundry.getEventResults(
   await foundry.confirm(Namespace.create(NFTOwner)),
   "NamespaceTransfer"
 );
@@ -40,12 +39,12 @@ const Rental = await foundry.deploy({
   args: [Namespace],
   abis: [Namespace],
 });
-await ENS.$set("rental.eth", NFTDeployer, LinkedNFTResolver);
+await ENS.$set("rental.eth", NFTDeployer, LinkedResolver);
 await foundry.confirm(
-  LinkedNFTResolver.connect(NFTDeployer).setLink(namehash("rental.eth"), Rental)
+  LinkedResolver.connect(NFTDeployer).setLink(namehash("rental.eth"), Rental)
 );
 
-const { tokenId: tokenRaffy } = extractEvent(
+const [{ tokenId: tokenRaffy }] = foundry.getEventResults(
   await foundry.confirm(Rental.connect(NFTOwner).mint("raffy", 5)),
   "Transfer"
 );
@@ -56,7 +55,13 @@ await foundry.confirm(
 await foundry.nextBlock();
 console.log(await Rental.available("raffy"));
 console.log(await resolve("raffy.rental.eth"));
-await foundry.nextBlock(5);
+
+await foundry.nextBlock({ blocks: 5 });
+console.log(await Rental.available("raffy"));
+console.log(await resolve("raffy.rental.eth"));
+
+await foundry.confirm(Rental.connect(NFTOwner).mint("raffy", 10000));
+await foundry.nextBlock();
 console.log(await Rental.available("raffy"));
 console.log(await resolve("raffy.rental.eth"));
 

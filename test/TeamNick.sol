@@ -2,11 +2,11 @@
 pragma solidity ^0.8.0;
 
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import { LinkedNFT } from "../contracts/LinkedNFT.sol";
+import { LinkConfig } from "../contracts/LinkConfig.sol";
 import { INamespace } from "../contracts/INamespace.sol";
 import { StorageKey } from "../contracts/StorageKey.sol";
 
-contract TeamNick is ERC721, LinkedNFT {
+contract TeamNick is ERC721, LinkConfig {
 	event NamespaceChanged(uint256 indexed token, uint256 indexed ns);
 
 	INamespace immutable _namespace;

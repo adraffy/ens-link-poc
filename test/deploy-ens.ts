@@ -1,5 +1,5 @@
 import type { DeployedContract, Foundry, WalletLike } from "@adraffy/blocksmith";
-import { EnsPlugin, namehash, ZeroAddress } from "ethers";
+import { EnsPlugin, namehash } from "ethers";
 
 export async function deployENS(foundry: Foundry) {
   const ENS = await foundry.deploy(`
