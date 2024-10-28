@@ -15,7 +15,7 @@ export async function deployENS(foundry: Foundry) {
       function resolver(bytes32 node) external view returns (address) {
         return _nodes[node].resolver;
       }
-      function set(bytes32 node, address owner, address resolver) external {
+      function register(bytes32 node, address owner, address resolver) external {
         _nodes[node] = Node({owner: owner, resolver: resolver});
       }
     }
@@ -28,8 +28,8 @@ export async function deployENS(foundry: Foundry) {
   );
 
   return Object.assign(ENS, {
-    async $set(name: string, owner: WalletLike, contract: DeployedContract) {
-      return foundry.confirm(ENS.set(namehash(name), owner, contract));
+    async $register(name: string, owner: WalletLike, contract: DeployedContract) {
+      return foundry.confirm(ENS.register(namehash(name), owner, contract));
     },
   });
 }

@@ -14,8 +14,8 @@ const ABI = new Interface([
   `function lastModified(bytes) view returns (uint256)`,
 ]);
 
-const NFTOwner = await foundry.ensureWallet("NFTOwner");
-const NFTDeployer = await foundry.ensureWallet("NFTDeployer");
+const walletRaffy = await foundry.ensureWallet("raffy");
+const walleyDeployer = await foundry.ensureWallet("deployer");
 
 const ENS = await deployENS(foundry);
 const Namespace = await foundry.deploy({ file: "Namespace" });
@@ -24,19 +24,19 @@ const LinkedResolver = await foundry.deploy({
   file: "LinkedResolver",
   args: [ENS, SelfVerifier, Namespace],
 });
-
 const TeamNick = await foundry.deploy({
   file: "TeamNick",
-  from: NFTDeployer,
+  from: walleyDeployer,
   args: [Namespace],
-  abis: [Namespace],
 });
+
+// setup basename
 const [{ ns: nsBasename }] = foundry.getEventResults(
   TeamNick,
   "NamespaceTransfer"
 );
 await foundry.confirm(
-  Namespace.connect(NFTDeployer).setRecords(nsBasename, [
+  Namespace.connect(walleyDeployer).setRecords(nsBasename, [
     [
       namehash(""),
       [
@@ -47,16 +47,17 @@ await foundry.confirm(
   ])
 );
 
+// setup namespace
 const [{ ns: nsRaffy }] = foundry.getEventResults(
-  await foundry.confirm(TeamNick.connect(NFTOwner).mint("raffy")),
+  await foundry.confirm(TeamNick.connect(walletRaffy).mint("raffy")),
   "NamespaceTransfer"
 );
 await foundry.confirm(
-  Namespace.connect(NFTOwner).setRecords(nsRaffy, [
+  Namespace.connect(walletRaffy).setRecords(nsRaffy, [
     [
       namehash(""),
       [
-        StorageKey.addrValue(60, NFTOwner.address),
+        StorageKey.addrValue(60, walletRaffy.address),
         StorageKey.textValue("description", "raffy!"),
       ],
     ],
@@ -71,34 +72,43 @@ await foundry.confirm(
 );
 
 // create link
-await ENS.$set("teamnick.eth", NFTDeployer, LinkedResolver);
+await ENS.$register("teamnick.eth", walleyDeployer, LinkedResolver);
 await foundry.confirm(
-  LinkedResolver.connect(NFTDeployer).setLink(
+  LinkedResolver.connect(walleyDeployer).setLink(
     namehash("teamnick.eth"),
-    TeamNick
+    TeamNick.target
   )
 );
 
-console.log(await resolve("teamnick.eth"));
-console.log(await resolve("raffy.teamnick.eth"));
-console.log(await resolve("a.b.c.raffy.teamnick.eth"));
-//await new Promise(ful => setTimeout(ful, 5000));
+// resolve names
+await resolve("teamnick.eth");
+await resolve("raffy.teamnick.eth");
+await resolve("a.b.c.raffy.teamnick.eth");
+
+// edit a record
 await foundry.confirm(
-  Namespace.connect(NFTOwner).setRecord(
+  Namespace.connect(walletRaffy).setRecord(
     nsRaffy,
     namehash(""),
     ...StorageKey.textValue("description", "RAFFY!")
   )
 );
 await foundry.nextBlock();
-console.log(await resolve("raffy.teamnick.eth"));
+await resolve("raffy.teamnick.eth");
+
+// check nonexistent
+//await resolve("_dne");
+await resolve("_dne.teamnick.eth");
 
 await ccip.shutdown();
 await foundry.shutdown();
 
 async function resolve(name: string) {
   const resolver = await foundry.provider.getResolver(name);
-  if (!resolver) throw new Error("bug");
+  if (!resolver) {
+    console.log({ name, error: "no resolver" });
+    return;
+  }
   const address = await resolver.getAddress();
   const address_t = await lastModified(
     ABI.encodeFunctionData("addr", [ZeroHash, 60])
@@ -107,7 +117,7 @@ async function resolve(name: string) {
   const description_t = await lastModified(
     ABI.encodeFunctionData("text", [ZeroHash, "description"])
   );
-  return { name, address, address_t, description, description_t };
+  console.log({ name, address, address_t, description, description_t });
 
   async function lastModified(calldata: string) {
     const res = ABI.decodeFunctionResult(

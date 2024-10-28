@@ -2,7 +2,6 @@
 
 
 [profile.default]
-src = "contracts"
 lib = ["lib", "node_modules"]
 optimizer = true
 optimizer-runs = 200

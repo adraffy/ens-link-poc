@@ -4,8 +4,7 @@ pragma solidity ^0.8.0;
 import { GatewayFetchTarget, IGatewayVerifier } from "@unruggable/gateways/contracts/GatewayFetchTarget.sol";
 import { GatewayFetcher, GatewayRequest } from "@unruggable/gateways/contracts/GatewayFetcher.sol";
 import { ENS } from "@ensdomains/ens-contracts/contracts/registry/ENS.sol";
-import { BytesUtils } from "@ensdomains/ens-contracts/contracts/utils/BytesUtils.sol";
-import { BytesUtilsExt } from "./BytesUtilsExt.sol";
+import { BytesUtils, BytesUtilsExt } from "./BytesUtilsExt.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC165 } from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import { IExtendedResolver } from "@ensdomains/ens-contracts/contracts/resolvers/profiles/IExtendedResolver.sol";
@@ -15,37 +14,50 @@ import { NamespaceLayout } from "./INamespace.sol";
 
 //import "forge-std/console2.sol";
 
-contract LinkedResolver is IERC165, IExtendedResolver, GatewayFetchTarget, Ownable {
-	using GatewayFetcher for GatewayRequest;
-	using BytesUtils for bytes;
-	using BytesUtilsExt for bytes;
-
+contract LinkedResolver is
+	IERC165,
+	IExtendedResolver,
+	GatewayFetchTarget,
+	Ownable
+{
 	error NotAuthorized();
 	error Unreachable(bytes dnsname);
 
-	event LinkCreated(bytes32 indexed node, address indexed target);
+	event LinkChanged(bytes32 indexed node, bytes link);
 
 	uint256 constant SLOT_NFT_NS_PROGRAM =
 		uint256(keccak256("namespace.program")) - 1;
 	uint256 constant SLOT_NFT_BASE_NS =
 		uint256(keccak256("namespace.base")) - 1;
 
+	uint256 constant EVM_BIT = 0x80000000;
+	uint256 constant EVM_FALLBACK_COIN_TYPE = EVM_BIT;
+
 	uint8 constant EXIT_CODE_NS_PROGRAM = 1;
 	uint8 constant EXIT_CODE_MISSING_NS = 2;
+
+	using GatewayFetcher for GatewayRequest;
+	using BytesUtils for bytes;
+	using BytesUtilsExt for bytes;
 
 	ENS immutable _ens;
 	IGatewayVerifier immutable _verifier;
 	address immutable _namespace;
-	string[] _gateways;
-	mapping(bytes32 node => address) _links;
 
-	constructor(ENS ens, IGatewayVerifier verifier, address namespace) Ownable(msg.sender) {
+	string[] _gateways;
+	mapping(bytes32 node => bytes) _links;
+
+	constructor(
+		ENS ens,
+		IGatewayVerifier verifier,
+		address namespace
+	) Ownable(msg.sender) {
 		_ens = ens;
 		_verifier = verifier;
 		_namespace = namespace;
 	}
 
-	function setGatewayURLs(string[] memory urls) onlyOwner external {
+	function setGatewayURLs(string[] memory urls) external onlyOwner {
 		_gateways = urls;
 	}
 
@@ -59,45 +71,63 @@ contract LinkedResolver is IERC165, IExtendedResolver, GatewayFetchTarget, Ownab
 
 	// IExtendedResolver
 
+	enum Mode {
+		DEFAULT,
+		EVM_FALLBACK,
+		LAST_MOD
+	}
+
 	function resolve(
 		bytes memory dnsname,
 		bytes calldata data
 	) external view returns (bytes memory) {
 		(bytes32 baseNode, uint256 baseOffset) = _findSelf(dnsname);
-		address nft = _links[baseNode];
-		if (nft == address(0)) {
+		bytes memory link = _links[baseNode];
+		if (link.length == 0) {
 			return new bytes(64);
 		}
+
 		bytes32 key;
-		bool lastMod;
+		Mode mode;
 		if (bytes4(data) == ILastModifiedResolver.lastModified.selector) {
-			lastMod = true;
+			mode = Mode.LAST_MOD;
 			key = StorageKey.parse(abi.decode(data[4:], (bytes)));
 		} else {
+			(bool ok, uint256 coinType) = StorageKey.parseAddr(data);
+			if (
+				ok &&
+				(coinType == 60 || (coinType & EVM_BIT) != 0) &&
+				coinType != EVM_FALLBACK_COIN_TYPE
+			) {
+				mode = Mode.EVM_FALLBACK;
+			}
 			key = StorageKey.parse(data);
 		}
 
 		GatewayRequest memory req = GatewayFetcher.newRequest(2);
-		req.setTarget(nft);
 		bytes32 path;
-		if (baseOffset == 0) {
-			req.setSlot(SLOT_NFT_BASE_NS);
-			req.read().setOutput(0);
-		} else {
-			uint256 restOffset = dnsname.prevOffset(baseOffset);
-			bytes memory rest = dnsname.substring(0, restOffset + 1);
-			rest[restOffset] = bytes1(0);
-			path = rest.namehash(0);
+		if (link.length == 20) {
+			req.push(link).target();
+			if (baseOffset == 0) {
+				req.setSlot(SLOT_NFT_BASE_NS);
+				req.read().setOutput(0);
+			} else {
+				uint256 pathOffset = dnsname.prevOffset(baseOffset);
+				path = dnsname.take(pathOffset).namehash(0);
 
-			bytes memory label = dnsname.substring(
-				restOffset + 1,
-				baseOffset - restOffset - 1
-			);
-			req.push(block.timestamp);
-			req.push(label);
-			req.setSlot(SLOT_NFT_NS_PROGRAM).readBytes();
-			req.requireNonzero(EXIT_CODE_NS_PROGRAM).eval();
-			req.setOutput(0);
+				bytes memory label = dnsname.substring(
+					pathOffset + 1,
+					baseOffset - pathOffset - 1
+				);
+				req.push(block.timestamp);
+				req.push(label);
+				req.setSlot(SLOT_NFT_NS_PROGRAM).readBytes();
+				req.requireNonzero(EXIT_CODE_NS_PROGRAM).eval();
+				req.setOutput(0);
+			}
+		} else if (link.length == 32) {
+			req.push(link).setOutput(0);
+			path = dnsname.take(baseOffset).namehash(0);
 		}
 		req.pushOutput(0).requireNonzero(EXIT_CODE_MISSING_NS);
 
@@ -105,22 +135,27 @@ contract LinkedResolver is IERC165, IExtendedResolver, GatewayFetchTarget, Ownab
 		req.setSlot(NamespaceLayout.SLOT_RECORDS);
 		req.pushOutput(0).follow(); // records[ns]
 		req.push(path).follow(); // records[ns][path]
+		req.getSlot(); // save
 		req.push(key).follow(); // records[ns][path][key]
-		if (lastMod) {
+
+		if (mode == Mode.LAST_MOD) {
 			req.read(); // .time
 		} else {
-			req.offset(1).read().requireNonzero(0); // .hash
+			req.offset(1).read(); // .hash
+			if (mode == Mode.EVM_FALLBACK) {
+				GatewayRequest memory cmd = GatewayFetcher.newCommand();
+				cmd.pop(); // remove zero hash
+				cmd.slot(); // load saved slot
+				cmd.push(StorageKey.addr(EVM_FALLBACK_COIN_TYPE)).follow(); // fallback address
+				cmd.offset(1).read(); // .hash
+				req.push(cmd).dup(1).isZero().evalIf();
+			}
+			req.requireNonzero(0);
 			req.offset(1).readHashedBytes(); // .value
 		}
 		req.setOutput(1);
 
-		fetch(
-			_verifier,
-			req,
-			this.resolveCallback.selector,
-			data,
-			_gateways
-		);
+		fetch(_verifier, req, this.resolveCallback.selector, data, _gateways);
 	}
 
 	function resolveCallback(
@@ -154,13 +189,13 @@ contract LinkedResolver is IERC165, IExtendedResolver, GatewayFetchTarget, Ownab
 
 	// links
 
-	function setLink(bytes32 node, address target) external {
+	function setLink(bytes32 node, bytes memory link) external {
 		if (!_canModifyNode(node, msg.sender)) revert NotAuthorized();
-		_links[node] = target;
-		emit LinkCreated(node, target);
+		_links[node] = link;
+		emit LinkChanged(node, link);
 	}
 
-	function getLink(bytes32 node) external view returns (address) {
+	function getLink(bytes32 node) external view returns (bytes memory) {
 		return _links[node];
 	}
 

@@ -25,26 +25,32 @@ library StorageKey {
 	// https://adraffy.github.io/keccak.js/test/demo.html#algo=keccak-256&s=0xc86902330000000000000000000000000000000000000000000000000000000000000002&escape=1&encoding=hex
 	bytes32 constant PUBKEY = 0x09fb8735909dd331237a6beb0776b7175d5f1aba498474ba1681f771a8dfde34;
 
-	function parse(bytes memory v) internal pure returns (bytes32) {
-		bytes4 selector = bytes4(v);
-		if (selector == IAddrResolver.addr.selector) {
-			return addr(60);
-		} else if (selector == IAddressResolver.addr.selector) {
-			uint256 coinType;
+	function parseAddr(bytes memory v) internal pure returns (bool ok, uint256 coinType) {
+		if (bytes4(v) == IAddrResolver.addr.selector) {
+			ok = true;
+			coinType = 60;
+		} else if (bytes4(v) == IAddressResolver.addr.selector) {
+			ok = true;
 			assembly {
 				coinType := mload(add(v, 68))
 			}
-			return addr(coinType);
-		} else if (selector == ITextResolver.text.selector) {
-			string memory key;
+		}
+	}
+	function parseText(bytes memory v) internal pure returns (bool ok, string memory key) {
+		if (bytes4(v) == ITextResolver.text.selector) {
+			ok = true;
 			assembly {
 				key := add(add(v, 36), mload(add(v, 68)))
 			}
-			return text(key);
-		} else if (v.length == 36) {
-			return mono(selector);
-		} else {
-			revert UnsupportedProfile(selector);
 		}
+	}
+	function parse(bytes memory v) internal pure returns (bytes32) {
+		(bool ok, uint256 coinType) = parseAddr(v);
+		if (ok) return addr(coinType);
+		string memory key;
+		(ok, key) = parseText(v);
+		if (ok) return text(key);
+		if (v.length == 36) return mono(bytes4(v));
+		revert UnsupportedProfile(bytes4(v));
 	}
 }

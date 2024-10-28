@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import { StorageKey, ITextResolver, IAddressResolver, IContentHashResolver } from "../contracts/StorageKey.sol";
+import { StorageKey, ITextResolver, IAddressResolver, IContentHashResolver } from "../src/StorageKey.sol";
 import { Test } from "forge-std/Test.sol";
 
 contract Test_StorageKey is Test {

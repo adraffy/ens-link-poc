@@ -4,5 +4,4 @@
 1. `bun i`
 1. `bun test/TeamNick.ts`
 1. `bun test/Rental.ts`
-
-
+1. `bun test/DirectLink.ts`

@@ -6,8 +6,8 @@ import { deployENS } from "./deploy-ens.js";
 
 const foundry = await Foundry.launch({ infoLog: false });
 
-const NFTOwner = await foundry.ensureWallet("NFTOwner");
-const NFTDeployer = await foundry.ensureWallet("NFTDeployer");
+const walletRaffy = await foundry.ensureWallet("raffy");
+const walletDeployer = await foundry.ensureWallet("deployer");
 
 const ENS = await deployENS(foundry);
 const Namespace = await foundry.deploy({ file: "Namespace" });
@@ -17,51 +17,58 @@ const LinkedResolver = await foundry.deploy({
   args: [ENS, SelfVerifier, Namespace],
 });
 
-const [{ ns: nsRaffy }] = foundry.getEventResults(
-  await foundry.confirm(Namespace.create(NFTOwner)),
-  "NamespaceTransfer"
-);
+const Rental = await foundry.deploy({
+  file: "Rental",
+  from: walletDeployer,
+  args: [Namespace],
+  abis: [Namespace],
+});
+await ENS.$register("rental.eth", walletDeployer, LinkedResolver);
 await foundry.confirm(
-  Namespace.connect(NFTOwner).setRecords(nsRaffy, [
+  LinkedResolver.connect(walletDeployer).setLink(
+    namehash("rental.eth"),
+    Rental.target
+  )
+);
+
+// rent for 5 seconds
+// name comes with a namespace
+const receipt = await foundry.confirm(
+  Rental.connect(walletRaffy).mint("raffy", 0, 5)
+);
+//const [{ tokenId: tokenRaffy }] = foundry.getEventResults(receipt, "Transfer");
+const [{ ns: nsRaffy }] = foundry.getEventResults(receipt, "NamespaceTransfer");
+
+// set some records on the namespace
+await foundry.confirm(
+  Namespace.connect(walletRaffy).setRecords(nsRaffy, [
     [
       namehash(""),
       [
-        StorageKey.addrValue(60, NFTOwner.address),
+        StorageKey.addrValue(60, walletRaffy.address),
         StorageKey.textValue("description", "raffy!"),
       ],
     ],
   ])
 );
 
-const Rental = await foundry.deploy({
-  file: "Rental",
-  from: NFTDeployer,
-  args: [Namespace],
-  abis: [Namespace],
-});
-await ENS.$set("rental.eth", NFTDeployer, LinkedResolver);
-await foundry.confirm(
-  LinkedResolver.connect(NFTDeployer).setLink(namehash("rental.eth"), Rental)
-);
-
-const [{ tokenId: tokenRaffy }] = foundry.getEventResults(
-  await foundry.confirm(Rental.connect(NFTOwner).mint("raffy", 5)),
-  "Transfer"
-);
-await foundry.confirm(
-  Rental.connect(NFTOwner).setNamespace(tokenRaffy, nsRaffy)
-);
-
+// confirm we own it
 await foundry.nextBlock();
 console.log(await Rental.available("raffy"));
 console.log(await resolve("raffy.rental.eth"));
 
+// wait for expiration
 await foundry.nextBlock({ blocks: 5 });
+
+// confirm it expired
 console.log(await Rental.available("raffy"));
 console.log(await resolve("raffy.rental.eth"));
 
-await foundry.confirm(Rental.connect(NFTOwner).mint("raffy", 10000));
+// rerent, reuse namespace
+await foundry.confirm(Rental.connect(walletRaffy).mint("raffy", nsRaffy, 10000));
 await foundry.nextBlock();
+
+// confirm restored
 console.log(await Rental.available("raffy"));
 console.log(await resolve("raffy.rental.eth"));
 
