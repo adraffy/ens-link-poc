@@ -16,7 +16,7 @@ const Rental = await foundry.deploy({
 });
 
 const label = "raffy";
-const sec = 60;
+const sec = 25;
 const [{ ns }] = foundry.getEventResults(
   await foundry.confirm(Rental.mint(label, 0, sec)),
   "NamespaceTransfer"
@@ -37,9 +37,14 @@ const program = new GatewayProgram()
 console.log({ program: hexlify(program.encode()) });
 
 const block = await fetchBlock(foundry.provider, "latest");
-console.log(await exec(parseInt(block.timestamp)));
-console.log(await exec(parseInt(block.timestamp) + sec));
-console.log(await exec(parseInt(block.timestamp) + sec + 1));
+console.log("ns =", ns);
+console.log(" t ns");
+for (const t of [0, sec, sec + 1]) {
+  console.log(
+    t.toString().padStart(2, " "),
+    await exec(parseInt(block.timestamp) + t)
+  );
+}
 
 await foundry.shutdown();
 
@@ -54,5 +59,5 @@ async function exec(t: number) {
   const prover = await EthProver.latest(foundry.provider);
   const state = await prover.evalRequest(req);
   const [ns] = await state.resolveOutputs();
-  return ns == '0x' ? undefined : BigInt(ns);
+  return ns == "0x" ? undefined : BigInt(ns);
 }
