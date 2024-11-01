@@ -15,7 +15,6 @@ contract Script_LabelhashProgram is Script {
 				.setSlot(6)
 				.follow()
 				.read()
-				.debug("chonk")
 				.encode()
 		);
 
@@ -25,12 +24,10 @@ contract Script_LabelhashProgram is Script {
 			GatewayFetcher
 				.newCommand()
 				.keccak()
-				.dup()
 				.setSlot(6)
 				.follow()
 				.read()
-				.pushStack(0)
-				.gte()
+				.lte()
 				.assertNonzero(1)
 				.offset(1)
 				.read()

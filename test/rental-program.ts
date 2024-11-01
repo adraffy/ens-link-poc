@@ -23,16 +23,11 @@ const [{ ns }] = foundry.getEventResults(
 );
 
 const program = new GatewayProgram()
-  .keccak()
-  .dup()
-  .setSlot(6)
-  .follow()
-  .read()
-  .pushStack(0)
-  .gte()
-  .assertNonzero(1)
-  .offset(1)
-  .read();
+  .keccak() // token = labelhash(label)
+  .setSlot(6).follow().read() // _datas[token].exp
+  .lte() // block.timestamp < .exp
+  .assertNonzero(1) // if expired, exit(1)
+  .offset(1).read(); // .ns, return this value
 
 console.log({ program: hexlify(program.encode()) });
 

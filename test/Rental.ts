@@ -31,10 +31,10 @@ await foundry.confirm(
   )
 );
 
-// rent for 5 seconds
+// rent for 1 second
 // name comes with a namespace
 const receipt = await foundry.confirm(
-  Rental.connect(walletRaffy).mint("raffy", 0, 5)
+  Rental.connect(walletRaffy).mint("raffy", 0, 1)
 );
 //const [{ tokenId: tokenRaffy }] = foundry.getEventResults(receipt, "Transfer");
 const [{ ns: nsRaffy }] = foundry.getEventResults(receipt, "NamespaceTransfer");

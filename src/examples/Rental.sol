@@ -21,7 +21,7 @@ contract Rental is ERC721, LinkConfig {
 	constructor(INamespace namespace) ERC721("Rental", "RENT") {
 		_namespace = namespace;
 		_setBasenameNamespace(namespace.create(msg.sender));
-		_setNamespaceProgram(hex"5a0050010646483c00297a7836010101473c");
+		_setNamespaceProgram(hex"5a010646483c7b7836010101473c");
 	}
 
 	modifier onlyTokenOperator(uint256 token) {

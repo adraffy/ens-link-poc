@@ -83,12 +83,9 @@ contract LinkedResolver is
 	) external view returns (bytes memory) {
 		(bytes32 baseNode, uint256 baseOffset) = _findSelf(dnsname);
 		bytes memory link = _links[baseNode];
-		if (link.length == 0) {
-			return new bytes(64);
-		}
 
 		bytes32 key;
-		Mode mode;
+		Mode mode = Mode.DEFAULT;
 		if (bytes4(data) == ILastModifiedResolver.lastModified.selector) {
 			mode = Mode.LAST_MOD;
 			key = StorageKey.parse(abi.decode(data[4:], (bytes)));
@@ -128,6 +125,8 @@ contract LinkedResolver is
 		} else if (link.length == 32) {
 			req.push(link).setOutput(0);
 			path = dnsname.take(baseOffset).namehash(0);
+		} else {
+			return new bytes(64);
 		}
 		req.pushOutput(0).requireNonzero(EXIT_CODE_MISSING_NS);
 
